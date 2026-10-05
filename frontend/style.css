@@ -10,3 +10,5 @@ h3{margin:10px 0 6px;font-size:12px;text-transform:uppercase;color:#94a3b8}.mute
 .bar{height:5px;background:#334155;border-radius:3px;margin-top:4px}.bar i{display:block;height:100%;border-radius:3px}
 #log div{font:12px monospace;padding:2px 0;border-bottom:1px solid #1f2937}.warn{color:#fbbf24}.crit{color:#f87171}
 @media(max-width:800px){main{flex-direction:column}#map{flex:none;height:45%}aside{width:100%;flex:1}}
+
+.leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9)}
