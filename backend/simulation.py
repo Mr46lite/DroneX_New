@@ -1,400 +1,239 @@
-import math
-from typing import List, Dict, Any, Optional, Tuple
+"""The world: ticks, scripted events, scanner/supplier behaviour and commander commands."""
+from agents import Coordinator, Drone
+from planning import BASE_POS, a_star_route, boustrophedon_path, get_distance, route_is_clear
+from scenario import Scenario
 
-# --- Geographic Constants (Chennai Coastline) ---
-DISASTER_ZONE_POLYGON = [
-    [13.35, 80.10], [13.30, 80.28], [13.15, 80.34], [12.95, 80.30],
-    [12.78, 80.22], [12.72, 80.08], [12.85, 79.95], [13.05, 79.92],
-    [13.25, 79.98], [13.35, 80.10]
-]
+SCAN_DWELL = 3      # ticks a scanner hovers over a zone
+DELIVER_DWELL = 2   # ticks a supplier spends dropping aid
 
 
-def calculate_polygon_centroid(polygon: List[List[float]]) -> Tuple[float, float]:
-    vertices = polygon[:-1] if polygon[0] == polygon[-1] else polygon
-    area_twice = 0.0
-    latitude_sum = 0.0
-    longitude_sum = 0.0
-
-    for index, (latitude, longitude) in enumerate(vertices):
-        next_latitude, next_longitude = vertices[(index + 1) % len(vertices)]
-        cross = longitude * next_latitude - next_longitude * latitude
-        area_twice += cross
-        latitude_sum += (latitude + next_latitude) * cross
-        longitude_sum += (longitude + next_longitude) * cross
-
-    if abs(area_twice) < 1e-12:
-        raise ValueError("Cannot calculate centroid for a degenerate polygon")
-
-    return latitude_sum / (3.0 * area_twice), longitude_sum / (3.0 * area_twice)
-
-
-BASE_LAT, BASE_LNG = calculate_polygon_centroid(DISASTER_ZONE_POLYGON)
-
-ZONE_LAT_MIN = min(point[0] for point in DISASTER_ZONE_POLYGON)
-ZONE_LAT_MAX = max(point[0] for point in DISASTER_ZONE_POLYGON)
-ZONE_LNG_MIN = min(point[1] for point in DISASTER_ZONE_POLYGON)
-ZONE_LNG_MAX = max(point[1] for point in DISASTER_ZONE_POLYGON)
-SWEEP_ROWS = 7
-ARRIVAL_EPS = 0.05
-AVOIDANCE_RADIUS = 0.15
-
-WEATHER_PRESETS = {
-    "Clear":  {"wind_speed": 5,  "visibility": 10.0, "rain_intensity": 0,  "risk_level": "Low",    "factor": 1.0},
-    "Windy":  {"wind_speed": 28, "visibility": 8.0,  "rain_intensity": 10, "risk_level": "Medium", "factor": 1.2},
-    "Foggy":  {"wind_speed": 10, "visibility": 1.5,  "rain_intensity": 5,  "risk_level": "Medium", "factor": 1.15},
-    "Stormy": {"wind_speed": 45, "visibility": 2.0,  "rain_intensity": 80, "risk_level": "High",   "factor": 1.5}
-}
-
-NET_CYCLE = ["5G-Mesh", "4G-LTE", "LoRaWAN"]
-SEVERITY_SCORES = {"Critical": 100, "High": 70, "Medium": 40, "Low": 20}
-
-
-class Drone:
-    def __init__(self, drone_id: str, drone_type: str, index: int):
-        self.id = drone_id
-        self.type = drone_type  # "Scanner" or "Supplier"
-        self.index = index
-        self.x = BASE_LNG
-        self.y = BASE_LAT
-        self.z = 0.0
-        self.battery = 100.0
-        self.status = "Redeploying" if drone_type == "Scanner" else "Idle"
-        self.net = NET_CYCLE[index % 3] if drone_type == "Scanner" else "5G-Mesh"
-        self.work_pct = 0.0
-        self.target: Optional[Dict[str, float]] = None
-        self.target_incident_id: Optional[str] = None
-        self.assigned_strip_idx = index
-        self.strip_min_lng = ZONE_LNG_MIN + index * (ZONE_LNG_MAX - ZONE_LNG_MIN) / 7
-        self.strip_max_lng = ZONE_LNG_MIN + (index + 1) * (ZONE_LNG_MAX - ZONE_LNG_MIN) / 7
-        self.sweep_dir = 1
-        self.scan_tick = 0
-
-        # Baseline drain configuration
-        if drone_type == "Scanner":
-            self.operating_z = 110.0 + (index * 3.0)
-            self.z = self.operating_z
-            self.base_drain = 0.90 if drone_id == "SCN-01" else round(0.25 + (index % 3) * 0.08, 2)
-        else:
-            self.operating_z = 70.0
-            self.base_drain = 1.0
-
-    def calculate_telemetry(self, weather_factor: float) -> Dict[str, Any]:
-        drain = self.base_drain * weather_factor if self.status in ["Scanning", "Delivering Payload", "Returning to Base"] else 0.05
-        vel = 0.0
-        if self.status == "Scanning":
-            vel = round(12.0 / weather_factor, 1)
-        elif self.status == "Returning to Base":
-            vel = round(9.0 / weather_factor, 1)
-        elif self.status == "Delivering Payload":
-            vel = round(8.0 / weather_factor, 1)
-
-        remaining_uptime = round((self.battery / max(drain, 0.01)) * 0.8)
-        work_rate = (100.0 / 60.0) / weather_factor
-        eta = round(((100.0 - min(self.work_pct, 100.0)) / max(work_rate, 0.01)) * weather_factor * 0.8) if self.work_pct < 100 else 0
-
-        return {
-            "id": self.id,
-            "type": self.type,
-            "x": round(self.x, 4),
-            "y": round(self.y, 4),
-            "z": round(self.z, 1),
-            "battery": round(self.battery, 1),
-            "status": self.status,
-            "net": self.net,
-            "velocity": vel,
-            "work_pct": round(self.work_pct, 1),
-            "remaining_uptime_s": max(0, remaining_uptime),
-            "eta_s": max(0, eta)
-        }
-
-
-class SimulationEngine:
+class Simulation:
     def __init__(self):
         self.reset()
 
     def reset(self):
-        self.time_step = 0
-        self.weather_preset = "Clear"
-        self.obstacles: List[Dict[str, float]] = []
-        self.alerts: List[str] = ["[SYSTEM] 7 scanners deployed across disaster zone."]
-        
-        # Initialize Scanners (SCN-01 to SCN-07) and Suppliers (SUP-01, SUP-02)
-        self.drones: Dict[str, Drone] = {
-            f"SCN-0{i+1}": Drone(f"SCN-0{i+1}", "Scanner", i) for i in range(7)
-        }
-        self.drones["SUP-01"] = Drone("SUP-01", "Supplier", 0)
-        self.drones["SUP-02"] = Drone("SUP-02", "Supplier", 1)
+        self.sc = Scenario()
+        self.zones = self.sc.get_initial_state()
+        self.zmap = {z["id"]: z for z in self.zones}
+        self.tick = 0
+        self.comms = "normal"
+        self.blackout_until = 0
+        self.log = []
+        self.complete = False
+        self.coord = Coordinator()
+        self.drones = [Drone(i, t, *BASE_POS) for i, t in
+                       [("S1", "scanner"), ("S2", "scanner"), ("U1", "supplier"), ("U2", "supplier")]]
+        order = boustrophedon_path(self.zones)
+        half = (len(order) + 1) // 2
+        self.queues = {"S1": order[:half], "S2": order[half:]}
+        self.say("Mission started: 2 scanners and 2 suppliers at base")
 
-        self.incidents: List[Dict[str, Any]] = []
-        self.last_active_scanners_count = 7
+    # ---------- helpers ----------
+    def drone(self, did):
+        return next(d for d in self.drones if d.id == did)
 
-    def log_alert(self, category: str, message: str):
-        tag = f"[{category.upper()}]"
-        entry = f"T+{self.time_step:03d} {tag} {message}"
-        self.alerts.insert(0, entry)
-        if len(self.alerts) > 60:
-            self.alerts.pop()
+    def say(self, msg):
+        self.log.append(f"Tick {self.tick}: {msg}")
 
-    def set_weather(self, preset: str):
-        if preset in WEATHER_PRESETS:
-            self.weather_preset = preset
-            self.log_alert("weather", f"Weather changed to {preset} (Factor: {WEATHER_PRESETS[preset]['factor']})")
+    def _blocked(self):
+        return [z["id"] for z in self.zones if z["status"] == "blocked"]
 
-    def add_obstacle(self, lat: float, lng: float):
-        self.obstacles.append({"lat": round(lat, 4), "lng": round(lng, 4)})
-        self.log_alert("ai", f"Dynamic obstacle added at [{lat:.3f}, {lng:.3f}]. Replanning potential fields.")
+    def _pos(self, zid):
+        z = self.zmap[zid]
+        return (z["lat"], z["lng"])
 
-    def step(self):
-        self.time_step += 1
-        if self.time_step >= 150:
-            self.log_alert("sys", "Mission boundary reached. Resetting simulation loop.")
-            self.reset()
+    # ---------- main loop ----------
+    def update(self):
+        self.tick += 1
+        sc = self.sc
+        if self.tick == sc.block_tick:
+            self._block(sc.block_zone_id)
+        if self.tick == sc.battery_tick:
+            self._low_battery(sc.battery_drone)
+        if self.tick == sc.blackout_tick:
+            self._start_blackout()
+        if self.comms == "blackout" and self.tick >= self.blackout_until:
+            self.comms = "normal"
+            self.say("COMMS restored - executing queued commands")
+            for p in list(self.coord.pending):
+                if p.get("queued"):
+                    self._execute(p)
+        for d in self.drones:
+            (self._step_scanner if d.type == "scanner" else self._step_supplier)(d)
+        if not self.complete and all(z["status"] != "unscanned" for z in self.zones):
+            self.complete = True
+            self.say(f"Sweep complete - {len(self._blocked())} zone(s) blocked and skipped")
+
+    # ---------- scripted events ----------
+    def _start_blackout(self):
+        if self.comms == "blackout":
             return
+        self.comms = "blackout"
+        self.blackout_until = self.tick + self.sc.blackout_len
+        self.say("COMMS blackout - commands will be queued, drones continue autonomously")
 
-        wf = WEATHER_PRESETS[self.weather_preset]["factor"]
+    def _block(self, zid):
+        self.zmap[zid]["status"] = "blocked"
+        self.say(f"ALERT: {zid} became BLOCKED")
+        bpos = [self._pos(b) for b in self._blocked()]
+        for d in self.drones:
+            if not d.target or d.status not in ("scanning", "delivering"):
+                continue
+            if d.target == zid:
+                self.say(f"{d.id} rerouted, {zid} blocked")
+                d.dwell = 0
+                if d.type == "scanner":
+                    self._assign_next(d)
+                else:
+                    self._send_home(d)
+            elif not route_is_clear((d.lat, d.lng), d.waypoints, bpos):
+                route = a_star_route((d.lat, d.lng), d.target, self._blocked(), self.zones)
+                if route:
+                    d.waypoints = route
+                    self.say(f"{d.id} rerouted, {zid} blocked")
 
-        # 1. Trigger Scheduled Incident Detections
-        if self.time_step == 15:
-            inc1 = {
-                "id": "INC-01", "type": "Trapped Civilians", "severity": "High",
-                "people_affected": 6, "detected_by": "SCN-01",
-                "x": 80.05, "y": 13.20,
-                "status": "Detected", "priority_score": 0.0, "assigned_supplier": None
-            }
-            inc1["priority_score"] = self._compute_priority_score(inc1)
-            self.incidents.append(inc1)
-            self.log_alert("crit", "SCN-01 detected INC-01 (Trapped Civilians). Severity: High.")
+    def _low_battery(self, did):
+        d = self.drone(did)
+        d.battery = 15.0
+        self.say(f"{d.id} low battery (15%) - returning to base")
+        remaining = [z for z in ([d.target] if d.target else []) + self.queues[d.id]
+                     if self.zmap[z]["status"] == "unscanned"]
+        self.queues[d.id] = []
+        other = next((s for s in self.drones if s.type == "scanner" and s is not d
+                      and s.status != "grounded"), None)
+        if other and remaining:
+            self.queues[other.id] += remaining
+            if other.status == "done":
+                other.status = "idle"
+            self.say(f"{other.id} takes over {', '.join(remaining)} from {d.id}")
+        d.dwell = 0
+        self._send_home(d, final="grounded")
 
-        if self.time_step == 22:
-            inc2 = {
-                "id": "INC-02", "type": "Medical Emergency", "severity": "Critical",
-                "people_affected": 12, "detected_by": "SCN-02",
-                "x": 80.25, "y": 12.85,
-                "status": "Detected", "priority_score": 0.0, "assigned_supplier": None
-            }
-            inc2["priority_score"] = self._compute_priority_score(inc2)
-            self.incidents.append(inc2)
-            self.log_alert("crit", "SCN-02 detected INC-02 (Medical Emergency). Severity: Critical.")
-
-        # 2. AI Incident Prioritization & Dispatch Engine (t = 30)
-        if self.time_step == 30:
-            self._dispatch_suppliers()
-
-        # 3. Longitudinal Strip Partitioning
-        active_scanners = [d for d in self.drones.values() if d.type == "Scanner" and d.status in ["Scanning", "Redeploying"]]
-        num_active = len(active_scanners)
-        if num_active > 0 and num_active != self.last_active_scanners_count:
-            self.log_alert("ai", f"Fleet partition reconfigured: {num_active} active scanners. Reslicing {num_active} longitudinal strips.")
-            self.last_active_scanners_count = num_active
-
-        strip_width = (ZONE_LNG_MAX - ZONE_LNG_MIN) / max(num_active, 1)
-        for idx, scanner in enumerate(active_scanners):
-            scanner.assigned_strip_idx = idx
-            scanner.strip_min_lng = ZONE_LNG_MIN + idx * strip_width
-            scanner.strip_max_lng = scanner.strip_min_lng + strip_width
-
-        # 4. Update Scanner Mechanics & Trajectories
-        for drone in self.drones.values():
-            if drone.type == "Scanner":
-                self._update_scanner(drone, num_active, wf)
-            elif drone.type == "Supplier":
-                self._update_supplier(drone, wf)
-
-    def _compute_priority_score(self, inc: Dict[str, Any]) -> float:
-        sev_score = SEVERITY_SCORES.get(inc["severity"], 20)
-        people_term = min(inc["people_affected"] * 2, 40)
-        dist_deg = math.hypot(inc["x"] - BASE_LNG, inc["y"] - BASE_LAT)
-        dist_term = max(0.0, 30.0 - (dist_deg * 27.2))
-        return round(sev_score + people_term + dist_term, 1)
-
-    def _dispatch_suppliers(self):
-        unhandled = [inc for inc in self.incidents if inc["assigned_supplier"] is None]
-        unhandled.sort(key=lambda item: item["priority_score"], reverse=True)
-        available_suppliers = [d for d in self.drones.values() if d.type == "Supplier" and d.status in ["Idle", "Landed - Idle"]]
-
-        for inc in unhandled:
-            if available_suppliers:
-                supp = available_suppliers.pop(0)
-                supp.status = "Delivering Payload"
-                supp.z = supp.operating_z
-                supp.target = {"x": inc["x"], "y": inc["y"]}
-                supp.target_incident_id = inc["id"]
-                inc["assigned_supplier"] = supp.id
-                inc["status"] = "Supplier Dispatched"
-                self.log_alert("ai", f"Assigned {supp.id} to {inc['id']} (Score: {inc['priority_score']}). En route at 70m.")
-            else:
-                inc["status"] = "Queued - Awaiting Next Unit"
-                self.log_alert("alert", f"Resource saturation: {inc['id']} queued. Awaiting next returning unit.")
-
-    def _update_scanner(self, drone: Drone, active_count: int, wf: float):
-        # Battery drain logic
-        if drone.status == "Scanning":
-            drone.battery = max(0.0, drone.battery - (drone.base_drain * wf))
-            drone.work_pct = min(100.0, drone.work_pct + ((100.0 / 60.0) / wf))
-            drone.scan_tick += 1
-
-            if drone.battery <= 20.0:
-                drone.status = "Returning to Base"
-                drone.target = {"x": BASE_LNG, "y": BASE_LAT}
-                self.log_alert("sys", f"{drone.id} reached RTL threshold (<=20%). Initiating autonomous base RTB.")
+    # ---------- commander ----------
+    def handle_command(self, cmd):
+        if not isinstance(cmd, dict):
+            return
+        t = cmd.get("type")
+        if t in ("approve", "override"):
+            p = next((p for p in self.coord.pending if p["id"] == cmd.get("id")), None)
+            if not p:
                 return
-
-            row_height = (ZONE_LAT_MAX - ZONE_LAT_MIN) / SWEEP_ROWS
-            dx = (0.0001 / wf) * getattr(drone, "sweep_dir", 1)
-            dx, dy = self._apply_potential_field(drone, dx, 0.0)
-            next_x = drone.x + dx
-
-            if next_x >= drone.strip_max_lng or next_x <= drone.strip_min_lng:
-                drone.y = max(ZONE_LAT_MIN, drone.y - row_height)
-                drone.sweep_dir *= -1
-                if drone.y <= ZONE_LAT_MIN:
-                    drone.status = "Returning to Base"
-                    drone.target = None
-                    self.log_alert("sys", f"{drone.id} completed sector sweep. RTB initiated.")
+            if t == "override":
+                if cmd.get("target_zone") not in self.zmap:
+                    return
+                p["target_zone"] = cmd["target_zone"]
+                p["overridden"] = True
+            if self.comms == "blackout":
+                if not p.get("queued"):
+                    p["queued"] = True
+                    self.say(f"{p['id']} approved -> {p['target_zone']} (queued during blackout)")
                 return
+            self._execute(p)
+        elif t == "trigger" and cmd.get("event") == "blackout":
+            self._start_blackout()
 
-            drone.x += dx
-            drone.y += dy
+    def _execute(self, p):
+        self.coord.pending.remove(p)
+        self.drone(p["drone_id"]).deliveries.append(p["target_zone"])
+        if p.get("overridden"):
+            self.say(f"Commander: {p['id']} OVERRIDDEN to {p['target_zone']} ({p['drone_id']})")
+        else:
+            self.say(f"Commander approved {p['id']}: {p['drone_id']} -> {p['target_zone']}")
 
-        elif drone.status == "Returning to Base":
-            drone.battery = max(0.0, drone.battery - (drone.base_drain * wf * 0.5))
-            dx = BASE_LNG - drone.x
-            dy = BASE_LAT - drone.y
-            dist = math.hypot(dx, dy)
-            if dist < ARRIVAL_EPS:
-                drone.x = BASE_LNG
-                drone.y = BASE_LAT
-                drone.z = 0.0
-                drone.status = "Landed - Charging"
-                self.log_alert("sys", f"{drone.id} landed at Base Station helipad. Rapid recharge sequence started.")
+    # ---------- scanners ----------
+    def _assign_next(self, d):
+        q, blocked = self.queues[d.id], self._blocked()
+        while True:
+            q[:] = [z for z in q if self.zmap[z]["status"] == "unscanned"]
+            if not q:
+                d.target, d.waypoints, d.status = None, [], "done"
+                return False
+            zid = min(q, key=lambda z: get_distance((d.lat, d.lng), self._pos(z)))
+            q.remove(zid)
+            route = a_star_route((d.lat, d.lng), zid, blocked, self.zones)
+            if route:
+                d.target, d.waypoints, d.dwell, d.status = zid, route, 0, "scanning"
+                return True
+            self.say(f"{d.id} cannot reach {zid}, skipping")
+
+    def _step_scanner(self, d):
+        if d.status in ("grounded", "done"):
+            return
+        if d.status == "returning":
+            if d.move():
+                d.lat, d.lng = BASE_POS
+                d.status = d.final_status if hasattr(d, "final_status") else "grounded"
+                self.say(f"{d.id} landed at base ({d.status})")
+            return
+        if d.status == "idle" and not self._assign_next(d):
+            return
+        if d.dwell > 0:
+            d.dwell -= 1
+            if d.dwell == 0:
+                self._finish_scan(d)
+        elif d.move():
+            d.dwell = SCAN_DWELL
+
+    def _finish_scan(self, d):
+        zid, z = d.target, self.zmap[d.target]
+        if zid in self.sc.survivor_zones:
+            z["status"] = "survivor_found"
+            self.say(f"{d.id} scanned {zid}: SURVIVOR detected")
+            sup = self.coord.pick_supplier(self.drones, self._pos(zid))
+            if sup:
+                self.say(self.coord.propose(self.tick, sup.id, "deliver", zid, f"Survivor found in {zid}"))
             else:
-                step_size = 0.015 / wf
-                drone.x += (dx / dist) * step_size
-                drone.y += (dy / dist) * step_size
-                drone.z = max(0.0, drone.z - 2.5)
+                self.say(f"No supplier available for {zid}")
+        else:
+            z["status"] = "scanned"
+            self.say(f"{d.id} scanned {zid}")
+        d.target = None
+        d.status = "idle"
+        self._assign_next(d)
 
-        elif drone.status == "Landed - Charging":
-            drone.battery = min(100.0, drone.battery + 4.0)
-            if drone.battery >= 100.0:
-                drone.status = "Redeploying"
-                drone.sweep_dir = 1
-                drone.scan_tick = 0
-                self.log_alert("ai", f"{drone.id} battery replenished (100%). Redeploying to sector scan pattern.")
+    # ---------- suppliers ----------
+    def _send_home(self, d, final="idle"):
+        d.waypoints = a_star_route((d.lat, d.lng), "BASE", self._blocked(), self.zones) or [BASE_POS]
+        d.target, d.status = None, "returning"
+        d.final_status = final
 
-        elif drone.status == "Redeploying":
-            drone.z = min(drone.operating_z, drone.z + 5.0)
-            target_x = drone.strip_min_lng
-            target_y = ZONE_LAT_MAX
+    def _start_delivery(self, d):
+        while d.deliveries:
+            zid = d.deliveries.pop(0)
+            route = a_star_route((d.lat, d.lng), zid, self._blocked(), self.zones)
+            if route:
+                d.target, d.waypoints, d.dwell, d.status = zid, route, 0, "delivering"
+                return
+            self.say(f"{d.id} cannot reach {zid} (blocked)")
 
-            dx = target_x - drone.x
-            dy = target_y - drone.y
-            target_distance = math.hypot(dx, dy)
-            step_size = 0.02 / wf
-            if target_distance > 0:
-                movement = min(target_distance, step_size)
-                drone.x += (dx / target_distance) * movement
-                drone.y += (dy / target_distance) * movement
+    def _step_supplier(self, d):
+        if d.status == "idle" and d.deliveries:
+            self._start_delivery(d)
+        if d.status == "delivering":
+            if d.dwell > 0:
+                d.dwell -= 1
+                if d.dwell == 0:
+                    self.zmap[d.target]["aided"] = True
+                    self.say(f"{d.id} delivered aid to {d.target}")
+                    d.target, d.status = None, "idle"
+                    self._start_delivery(d)
+                    if d.status != "delivering":
+                        self._send_home(d)
+            elif d.move():
+                d.dwell = DELIVER_DWELL
+        elif d.status == "returning" and d.move():
+            d.lat, d.lng = BASE_POS
+            d.status = "idle"
 
-            if target_distance <= step_size and drone.z >= drone.operating_z:
-                drone.status = "Scanning"
-                drone.scan_tick = 0
-                drone.sweep_dir = 1
-                self.log_alert("sys", f"{drone.id} restored station. Resuming boustrophedon sweep.")
-
-    def _update_supplier(self, drone: Drone, wf: float):
-        if drone.status == "Delivering Payload" and drone.target:
-            drone.battery = max(0.0, drone.battery - (drone.base_drain * wf))
-            dx = drone.target["x"] - drone.x
-            dy = drone.target["y"] - drone.y
-            dist = math.hypot(dx, dy)
-
-            if dist < ARRIVAL_EPS:
-                drone.status = "Returning to Base"
-                drone.target = {"x": BASE_LNG, "y": BASE_LAT}
-                if drone.target_incident_id:
-                    for inc in self.incidents:
-                        if inc["id"] == drone.target_incident_id:
-                            inc["status"] = "Payload Delivered"
-                self.log_alert("ai", f"{drone.id} delivered emergency payload to {drone.target_incident_id}. RTB initiated.")
-                drone.target_incident_id = None
-            else:
-                step_size = 0.02 / wf
-                drone.x += (dx / dist) * step_size
-                drone.y += (dy / dist) * step_size
-
-        elif drone.status == "Returning to Base":
-            drone.battery = max(0.0, drone.battery - (drone.base_drain * wf * 0.4))
-            dx = BASE_LNG - drone.x
-            dy = BASE_LAT - drone.y
-            dist = math.hypot(dx, dy)
-
-            if dist < ARRIVAL_EPS:
-                drone.x = BASE_LNG
-                drone.y = BASE_LAT
-                drone.z = 0.0
-                drone.status = "Idle"
-                drone.target = None
-                self.log_alert("sys", f"{drone.id} returned to Base Helipad. Payload system restocked. Standing by.")
-            else:
-                step_size = 0.02 / wf
-                drone.x += (dx / dist) * step_size
-                drone.y += (dy / dist) * step_size
-
-    def _apply_potential_field(self, drone: Drone, dx: float, dy: float) -> Tuple[float, float]:
-        step_length = math.hypot(dx, dy)
-        final_dx = dx
-        final_dy = dy
-
-        for obs in self.obstacles:
-            dx_obs = drone.x - obs["lng"]
-            dy_obs = drone.y - obs["lat"]
-            dist = math.hypot(dx_obs, dy_obs)
-            if 0.0 < dist < AVOIDANCE_RADIUS:
-                push_strength = ((AVOIDANCE_RADIUS - dist) / AVOIDANCE_RADIUS) * step_length
-                push_x = (dx_obs / dist) * push_strength
-                push_y = (dy_obs / dist) * push_strength
-                tangent_x = -push_y
-                tangent_y = push_x
-                final_dx += push_x + tangent_x
-                final_dy += push_y + tangent_y
-
-        final_length = math.hypot(final_dx, final_dy)
-        if final_length > step_length > 0:
-            scale = step_length / final_length
-            final_dx *= scale
-            final_dy *= scale
-
-        return final_dx, final_dy
-
-    def get_telemetry_payload(self) -> Dict[str, Any]:
-        scanners = [d for d in self.drones.values() if d.type == "Scanner"]
-        total_cov = sum(d.work_pct for d in scanners) / len(scanners) if scanners else 0.0
-        wf = WEATHER_PRESETS[self.weather_preset]
-        active_count = sum(
-            d.type == "Scanner" and d.status in ["Scanning", "Redeploying"]
-            for d in self.drones.values()
-        )
-        grid_lines = [
-            ZONE_LNG_MIN + (ZONE_LNG_MAX - ZONE_LNG_MIN) * index / active_count
-            for index in range(1, active_count)
-        ] if active_count else []
-
+    # ---------- output ----------
+    def get_state(self):
         return {
-            "time_step": self.time_step,
-            "coverage": round(total_cov, 1),
-            "base_station": {"x": BASE_LNG, "y": BASE_LAT},
-            "zone_polygon": DISASTER_ZONE_POLYGON,
-            "grid_lines": grid_lines,
-            "obstacles": self.obstacles,
-            "weather": {
-                "preset": self.weather_preset,
-                "wind_speed": wf["wind_speed"],
-                "visibility": wf["visibility"],
-                "rain_intensity": wf["rain_intensity"],
-                "risk_level": wf["risk_level"],
-                "factor": wf["factor"]
-            },
-            "incidents": self.incidents,
-            "drones": [d.calculate_telemetry(wf["factor"]) for d in self.drones.values()],
-            "alerts": self.alerts
+            "tick": self.tick, "comms": self.comms,
+            "base": {"lat": BASE_POS[0], "lng": BASE_POS[1]},
+            "drones": [{"id": d.id, "type": d.type, "lat": round(d.lat, 6), "lng": round(d.lng, 6),
+                        "battery": round(max(d.battery, 0), 1), "status": d.status, "target": d.target,
+                        "route": [list(w) for w in d.waypoints]} for d in self.drones],
+            "zones": [dict(z) for z in self.zones],
+            "pending": [dict(p) for p in self.coord.pending],
+            "log": list(reversed(self.log[-40:])),
         }
