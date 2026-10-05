@@ -1,14 +1,16 @@
-import asyncio
-import json
-import logging
+import asyncio, json, logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from simulation import Simulation
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("dronex")
+FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
 
 sim = Simulation()
 clients = set()
@@ -24,8 +26,7 @@ async def broadcast(message):
 
 
 async def simulation_loop():
-    """One shared loop. The simulation only advances while a dashboard is connected,
-    so the disaster always starts when the demo starts."""
+    """Advances only while a dashboard is connected, so the demo always starts at tick 0."""
     while True:
         try:
             if clients:
@@ -49,9 +50,11 @@ app = FastAPI(lifespan=lifespan)
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
     await websocket.accept()
+    if not clients:
+        sim.reset()          # first viewer after an empty room always sees a fresh mission
     clients.add(websocket)
     try:
-        await websocket.send_text(json.dumps(sim.get_state()))   # show something immediately
+        await websocket.send_text(json.dumps(sim.get_state()))
         while True:
             raw = await websocket.receive_text()
             try:
@@ -66,6 +69,13 @@ async def ws_endpoint(websocket: WebSocket):
 
 @app.post("/reset")
 async def reset():
-    """Restart the scenario from tick 0 (handy between demo runs)."""
     sim.reset()
     return {"ok": True}
+
+
+@app.get("/")
+async def index():
+    return FileResponse(FRONTEND / "index.html")
+
+
+app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
