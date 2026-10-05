@@ -3,6 +3,7 @@
 **Coordinated multi-drone disaster response simulation: search, detect, and deliver aid, with a human commander in the loop.**
 
 VIDEO LINK : https://drive.google.com/file/d/1zDEpt0o_G6etDWH3tuMKIT65bKh7yFcx/view?usp=sharing
+DEPLOYMENT LINK : https://dronex-u0pn.onrender.com
 
 ## Problem
 
