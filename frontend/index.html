@@ -1,101 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>DroneX Swarm Command & Control Platform</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/style.css" />
-</head>
-<body>
-  <div class="c2-container">
-    <!-- Left Sidebar -->
-    <aside class="sidebar">
-      <div class="header-card">
-        <div class="brand">
-          <div class="conn-dot" id="conn-dot"></div>
-          <div>
-            <h1>DroneX Swarm C2</h1>
-            <span class="sub-text" id="mission-time">Mission T+000 | 0.8s Tick</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Coverage Bar -->
-      <div class="panel-section">
-        <div class="metric-title">
-          <span>Grid Coverage</span>
-          <span id="coverage-val">0.0%</span>
-        </div>
-        <div class="bar-container">
-          <div class="bar-fill purple-fill" id="coverage-fill"></div>
-        </div>
-      </div>
-
-      <!-- Priority Incident Queue -->
-      <div class="panel-section">
-        <h3 class="section-title">Incident Queue (AI Prioritized)</h3>
-        <div class="incident-list" id="incident-list">
-          <div class="empty-state">No incidents detected in sector.</div>
-        </div>
-      </div>
-
-      <!-- Live Drone Telemetry Cards -->
-      <div class="panel-section fill-remaining">
-        <h3 class="section-title">Fleet Telemetry (9 Units)</h3>
-        <div class="drone-list" id="drone-list"></div>
-      </div>
-    </aside>
-
-    <!-- Main Map Display -->
-    <main class="map-wrapper">
-      <div id="map"></div>
-
-      <!-- Weather Slide-Out Drawer -->
-      <div class="weather-tab" id="weather-tab">
-        <span>WEATHER</span>
-      </div>
-      <div class="weather-drawer" id="weather-drawer">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <h3 style="margin: 0;">Environmental Dynamics</h3>
-          <button class="close-btn" type="button" aria-label="Close weather panel" onclick="document.getElementById('weather-drawer').classList.remove('open')">&times;</button>
-        </div>
-        <div class="weather-metrics">
-          <p>Risk Level: <strong id="env-risk">Low</strong></p>
-          <p>Wind Speed: <span id="env-wind">5 km/h</span></p>
-          <p>Visibility: <span id="env-vis">10 km</span></p>
-          <p>Rain Intensity: <span id="env-rain">0%</span></p>
-          <p>Drain Factor: <span id="env-factor">1.0x</span></p>
-        </div>
-        <div class="weather-actions">
-          <button class="btn-weather" onclick="setWeather('Clear')">Clear</button>
-          <button class="btn-weather" onclick="setWeather('Windy')">Windy</button>
-          <button class="btn-weather" onclick="setWeather('Foggy')">Foggy</button>
-          <button class="btn-weather" onclick="setWeather('Stormy')">Stormy</button>
-        </div>
-      </div>
-
-      <!-- Live Monospace Operations Console -->
-      <footer class="terminal-panel">
-        <div class="terminal-header">
-          <span>LIVE MISSION LOG & RECONFIGURATION TERMINAL</span>
-          <span class="terminal-hint">Click map to drop dynamic obstacles</span>
-        </div>
-        <div class="terminal-body" id="terminal-body"></div>
-      </footer>
-    </main>
-
-    <!-- Inspector Modal Panel -->
-    <div class="inspector-modal" id="inspector-modal">
-      <div class="modal-header">
-        <h3 id="insp-id">SCN-01</h3>
-        <button class="close-btn" onclick="closeInspector()">&times;</button>
-      </div>
-      <div class="modal-grid" id="insp-grid"></div>
-    </div>
-  </div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js"></script>
-</body>
-</html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DroneX Command Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/static/style.css">
+</head><body>
+<header>
+  <b>DroneX</b><span id="tick">Tick 0</span><span id="comms" class="pill ok">COMMS NORMAL</span>
+  <span id="conn" class="dot"></span>
+  <button id="blackout">Trigger blackout</button><button id="reset">Reset</button>
+</header>
+<main>
+  <div id="map"></div>
+  <aside>
+    <h3>Commander approvals</h3><div id="pending"><p class="muted">No pending proposals.</p></div>
+    <h3>Fleet</h3><div id="fleet"></div>
+    <h3>Mission log</h3><div id="log"></div>
+  </aside>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/static/app.js"></script>
+</body></html>
