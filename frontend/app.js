@@ -15,8 +15,8 @@ function render(s) {
 
   s.zones.forEach(z => {
     const col = COLORS[z.status] || "#64748b";
-    if (!zoneL[z.id]) zoneL[z.id] = L.circle([z.lat, z.lng], {radius: 130, weight: 2}).addTo(map).bindTooltip(z.id, {permanent: true, direction: "center", className: "zt"});
-    zoneL[z.id].setStyle({color: col, fillColor: col, fillOpacity: z.status === "unscanned" ? .15 : .45});
+    if (!zoneL[z.id]) zoneL[z.id] = L.rectangle([[z.lat - 0.0025, z.lng - 0.0025], [z.lat + 0.0025, z.lng + 0.0025]], {weight: 1.5}).addTo(map).bindTooltip(z.id, {permanent: true, direction: "center", className: "zt"});
+    zoneL[z.id].setStyle({color: col, fillColor: col, fillOpacity: z.status === "unscanned" ? .12 : .4});
     zoneL[z.id].setTooltipContent(z.id + (z.aided ? " ✚" : ""));
   });
 
@@ -26,7 +26,8 @@ function render(s) {
       droneL[d.id] = L.circleMarker([d.lat, d.lng], {radius: 8, color: "#fff", weight: 2, fillOpacity: 1}).addTo(map);
       routeL[d.id] = L.polyline([], {color: col, weight: 2, dashArray: "4 6"}).addTo(map);
     }
-    droneL[d.id].setLatLng([d.lat, d.lng]).setStyle({fillColor: d.status === "grounded" ? "#6b7280" : col}).bindTooltip(d.id);
+    const off = d.type === "supplier" && d.status === "idle" ? (+d.id.slice(1) - 4) * 0.0003 : 0;
+    droneL[d.id].setLatLng([d.lat, d.lng + off]).setStyle({fillColor: d.status === "grounded" ? "#6b7280" : col}).bindTooltip(d.id);
     routeL[d.id].setLatLngs([[d.lat, d.lng], ...d.route]);
   });
 
