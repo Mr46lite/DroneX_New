@@ -1,0 +1,339 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace, sans-serif;
+  background-color: #0f172a;
+  color: #f8fafc;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.c2-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Sidebar Styles */
+.sidebar {
+  width: 420px;
+  background: #1e293b;
+  border-right: 1px solid #334155;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 14px;
+  overflow-y: auto;
+  z-index: 1000;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand h1 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.sub-text {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.conn-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+}
+
+.conn-dot.connected {
+  background: #4ade80;
+  box-shadow: 0 0 8px #4ade80;
+}
+
+.panel-section {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.fill-remaining {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 250px;
+}
+
+.metric-title {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.bar-container {
+  height: 8px;
+  background: #334155;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.purple-fill {
+  background: #a855f7;
+  height: 100%;
+  width: 0%;
+  transition: width 0.4s ease;
+}
+
+.section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.incident-list, .drone-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.incident-card {
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-left: 4px solid #ef4444;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.inc-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: bold;
+}
+
+.badge {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.badge-critical { background: #991b1b; color: #fee2e2; }
+.badge-high { background: #c2410c; color: #ffedd5; }
+
+.drone-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-left: 4px solid #00e5ff;
+  border-radius: 4px;
+  padding: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.drone-card.supplier {
+  border-left-color: #ffea00;
+}
+
+.drone-card:hover {
+  background: #273549;
+}
+
+.drone-card-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.drone-card-sub {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.bat-bar {
+  height: 4px;
+  background: #334155;
+  margin-top: 6px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bat-fill {
+  background: #22c55e;
+  height: 100%;
+}
+
+/* Map Wrapper */
+.map-wrapper {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+#map {
+  flex: 1;
+  width: 100%;
+  background: #090d16;
+}
+
+/* Radar Pulse Ring */
+.radar-pulse-ring {
+  position: absolute;
+  width: 38px;
+  height: 38px;
+  border: 2px solid #00e5ff;
+  border-radius: 50%;
+  animation: radar-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  pointer-events: none;
+  transform: translate(-10px, -10px);
+}
+
+@keyframes radar-ping {
+  75%, 100% {
+    transform: translate(-10px, -10px) scale(2.2);
+    opacity: 0;
+  }
+}
+
+/* Weather Drawer */
+.weather-tab {
+  position: absolute;
+  top: 20px;
+  right: 0;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-right: none;
+  padding: 10px 8px;
+  cursor: pointer;
+  border-radius: 6px 0 0 6px;
+  writing-mode: vertical-rl;
+  font-size: 0.75rem;
+  font-weight: bold;
+  letter-spacing: 2px;
+  z-index: 1000;
+}
+
+.weather-drawer {
+  position: absolute;
+  top: 20px;
+  right: -320px;
+  width: 300px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px 0 0 8px;
+  padding: 16px;
+  transition: right 0.3s ease;
+  z-index: 1001;
+}
+
+.weather-drawer.open { right: 0; }
+.weather-metrics p { font-size: 0.8rem; margin: 6px 0; color: #cbd5e1; }
+.weather-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+
+.btn-weather {
+  background: #0f172a;
+  border: 1px solid #475569;
+  color: #f8fafc;
+  padding: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+.btn-weather:hover { background: #334155; }
+
+/* Operations Console */
+.terminal-panel {
+  height: 160px;
+  background: #0b0f19;
+  border-top: 1px solid #334155;
+  display: flex;
+  flex-direction: column;
+  font-family: monospace;
+  z-index: 999;
+}
+
+.terminal-header {
+  background: #1e293b;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  color: #94a3b8;
+  border-bottom: 1px solid #334155;
+}
+
+.terminal-body {
+  flex: 1;
+  padding: 8px 12px;
+  overflow-y: auto;
+  font-size: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.log-sys { color: #60a5fa; }
+.log-crit { color: #f87171; font-weight: bold; }
+.log-ai { color: #facc15; }
+.log-weather { color: #22d3ee; }
+.log-alert { color: #fb923c; }
+
+/* Inspector Modal */
+.inspector-modal {
+  display: none;
+  position: absolute;
+  top: 30px;
+  left: 440px;
+  width: 280px;
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  padding: 12px;
+  z-index: 1002;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #334155;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.modal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 0.75rem;
+}
