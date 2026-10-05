@@ -1,14 +1,654 @@
-*{box-sizing:border-box}body{margin:0;font:14px system-ui,sans-serif;background:#0f172a;color:#e2e8f0;height:100vh;display:flex;flex-direction:column}
-header{display:flex;gap:10px;align-items:center;padding:8px 12px;background:#1e293b;flex-wrap:wrap}
-.pill{padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700}.ok{background:#14532d}.bad{background:#991b1b}
-.dot{width:10px;height:10px;border-radius:50%;background:#ef4444}.dot.on{background:#22c55e}
-button{background:#334155;color:#e2e8f0;border:0;border-radius:6px;padding:6px 10px;cursor:pointer}button:hover{background:#475569}
-button.go{background:#16a34a}header button:first-of-type{margin-left:auto}
-main{flex:1;display:flex;min-height:0}#map{flex:1}aside{width:340px;overflow:auto;padding:10px;background:#111827}
-h3{margin:10px 0 6px;font-size:12px;text-transform:uppercase;color:#94a3b8}.muted{color:#64748b}
-.card{background:#1e293b;border-radius:8px;padding:8px;margin-bottom:6px}.card select{background:#0f172a;color:#e2e8f0;border:1px solid #475569;border-radius:4px}
-.bar{height:5px;background:#334155;border-radius:3px;margin-top:4px}.bar i{display:block;height:100%;border-radius:3px}
-#log div{font:12px monospace;padding:2px 0;border-bottom:1px solid #1f2937}.warn{color:#fbbf24}.crit{color:#f87171}
-@media(max-width:800px){main{flex-direction:column}#map{flex:none;height:45%}aside{width:100%;flex:1}}
+* {
+    box-sizing: border-box;
+}
 
-.leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9)}
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #0f172a;
+    color: #e2e8f0;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Sidebar Navigation */
+#sidebar {
+    width: 380px;
+    background-color: #1e293b;
+    border-right: 1px solid #334155;
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+}
+
+.sidebar-header {
+    padding: 16px 20px;
+    background-color: #0f172a;
+    border-bottom: 1px solid #334155;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.title-main {
+    display: block;
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #38bdf8;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.title-sub {
+    display: block;
+    font-size: 0.72rem;
+    color: #94a3b8;
+}
+
+#conn-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #4ade80;
+    display: inline-block;
+    box-shadow: 0 0 8px #4ade80;
+}
+
+/* Network Telemetry & Weather Panel */
+#comm-status-bar {
+    padding: 6px 16px;
+    background-color: #111827;
+    font-size: 0.72rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #334155;
+    color: #cbd5e1;
+}
+
+.badge {
+    background-color: #0284c7;
+    color: #ffffff;
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+#weather-panel {
+    background-color: #0f172a;
+    padding: 8px 16px;
+    border-bottom: 1px solid #334155;
+    font-size: 0.75rem;
+}
+
+.weather-title {
+    color: #94a3b8;
+    font-weight: bold;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    font-size: 0.68rem;
+}
+
+.weather-metrics {
+    color: #e2e8f0;
+}
+
+#wx-status {
+    margin-top: 4px;
+    font-weight: bold;
+    color: #4ade80;
+    font-size: 0.7rem;
+}
+
+/* Stage Tracker */
+#stage-tracker {
+    display: flex;
+    background-color: #0f172a;
+    border-bottom: 1px solid #334155;
+}
+
+.stage-step {
+    flex: 1;
+    text-align: center;
+    padding: 6px 0;
+    font-size: 0.68rem;
+    font-weight: bold;
+    color: #64748b;
+    border-right: 1px solid #334155;
+}
+
+.stage-step:last-child {
+    border-right: none;
+}
+
+.stage-step.active {
+    background-color: #1e293b;
+    color: #38bdf8;
+    border-bottom: 2px solid #38bdf8;
+}
+
+/* Coverage Bar */
+#coverage-container {
+    padding: 10px 16px;
+    border-bottom: 1px solid #334155;
+    background-color: #1a2235;
+}
+
+.cov-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.cov-bar-bg {
+    width: 100%;
+    background-color: #0f172a;
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+}
+
+#cov-bar-fill {
+    height: 100%;
+    width: 0%;
+    background-color: #a855f7;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+/* Incident Queue */
+#incident-queue {
+    padding: 10px 16px;
+    border-bottom: 1px solid #334155;
+    background-color: #1a1620;
+    max-height: 140px;
+    overflow-y: auto;
+}
+
+#incident-queue h4 {
+    margin: 0 0 6px 0;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: #f87171;
+    letter-spacing: 0.5px;
+}
+
+.incident-card {
+    background-color: #2a1e2e;
+    border-left: 3px solid #f87171;
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    font-size: 0.75rem;
+}
+
+.incident-card.assigned {
+    border-left-color: #facc15;
+}
+
+.incident-card .title {
+    font-weight: bold;
+    color: #f1f5f9;
+}
+
+.incident-card .meta {
+    color: #94a3b8;
+    margin-top: 2px;
+}
+
+.incident-card .score {
+    color: #facc15;
+    font-weight: bold;
+}
+
+#incident-empty {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-style: italic;
+}
+
+/* Drone Fleet Section */
+#drone-list-header {
+    padding: 8px 16px;
+    background-color: #0f172a;
+    font-size: 0.72rem;
+    font-weight: bold;
+    color: #94a3b8;
+    border-bottom: 1px solid #334155;
+    text-transform: uppercase;
+}
+
+#drone-list {
+    flex-grow: 1;
+    padding: 10px;
+    overflow-y: auto;
+}
+
+.drone-card {
+    background-color: #334155;
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 8px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    border-left: 4px solid transparent;
+}
+
+.drone-card.scanner { border-left-color: #00e5ff; }
+.drone-card.transport { border-left-color: #f59e0b; }
+
+.drone-card h3 {
+    margin: 0 0 4px 0;
+    font-size: 0.88rem;
+    color: #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+}
+
+.drone-card p {
+    margin: 2px 0;
+    font-size: 0.75rem;
+    color: #cbd5e1;
+}
+
+.battery-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    margin-top: 6px;
+    font-weight: bold;
+}
+
+.battery-container {
+    width: 100%;
+    background-color: #0f172a;
+    border-radius: 4px;
+    margin-top: 3px;
+    height: 8px;
+    overflow: hidden;
+}
+
+.battery-level {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+/* Main Map and Console */
+#main-view,
+#left-panel,
+#sidebar {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+#map {
+    flex-grow: 1;
+    width: 100%;
+    background-color: #0b1121;
+}
+
+#left-panel,
+#sidebar {
+    width: 380px;
+    background-color: #1e293b;
+    border-right: 1px solid #334155;
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(148,163,184,0.12);
+}
+
+#left-panel #drone-list,
+#sidebar #drone-list,
+#left-panel #drone-list-left,
+#sidebar #drone-list-left {
+    flex-grow: 1;
+    padding: 10px;
+    overflow-y: auto;
+}
+
+#map-hint {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid #334155;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    color: #38bdf8;
+    z-index: 500;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+#terminal {
+    height: 180px;
+    background-color: #050811;
+    border-top: 2px solid #334155;
+    padding: 10px 14px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.82rem;
+    overflow-y: auto;
+}
+
+.term-msg { margin-bottom: 4px; line-height: 1.3; }
+.term-alert { color: #f87171; }
+.term-sys { color: #38bdf8; }
+.term-crit { color: #ef4444; font-weight: bold; }
+.term-ai { color: #facc15; font-weight: bold; }
+
+/* Custom Drone & Marker Overlay Styles */
+.drone-map-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.drone-label {
+    background: rgba(15, 23, 42, 0.95);
+    color: #38bdf8;
+    border: 1px solid #00e5ff;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+    margin-bottom: 2px;
+}
+
+.drone-label.transport-lbl {
+    color: #f1f5f9;
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.9);
+}
+
+.drone-marker-body {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: bold;
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(0,0,0,0.8);
+}
+
+.drone-marker-body.scanner-body {
+    background-color: #00e5ff;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 12px #00e5ff;
+}
+
+.drone-marker-body.transport-body {
+    background-color: #f59e0b;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 12px #f59e0b;
+}
+
+/* Base Station Icon */
+.base-station-icon {
+    background-color: #0ea5e9;
+    border: 2px solid white;
+    border-radius: 50%;
+    text-align: center;
+    color: white;
+    font-weight: bold;
+    line-height: 24px;
+    box-shadow: 0 0 12px #0ea5e9;
+    font-size: 12px;
+}
+
+/* Survivor Red Pin Icon */
+.person-pin-icon {
+    background-color: #ef4444;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    text-align: center;
+    color: white;
+    font-size: 11px;
+    line-height: 22px;
+    box-shadow: 0 0 14px #ef4444;
+    animation: pulse 1.2s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 6px #ef4444; }
+    50% { box-shadow: 0 0 18px #ef4444; }
+    100% { box-shadow: 0 0 6px #ef4444; }
+}
+
+/* Map Legend Widget */
+.map-legend {
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid #334155;
+    padding: 10px 12px;
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 11px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    line-height: 1.5;
+}
+
+.map-legend h5 {
+    margin: 0 0 6px 0;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #38bdf8;
+    border-bottom: 1px solid #334155;
+    padding-bottom: 3px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.legend-box {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    margin-right: 8px;
+    display: inline-block;
+}
+
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+    display: inline-block;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #020817;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #e2e8f0;
+}
+
+#map {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: #020817;
+    z-index: 0;
+}
+
+.leaflet-container {
+    background: #020817;
+}
+
+#left-side-panel {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    bottom: 12px;
+    width: 280px;
+    z-index: 1000;
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    backdrop-filter: blur(8px);
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    color: #fff;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.45);
+}
+
+#right-side-panel {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 280px;
+    z-index: 1000;
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    backdrop-filter: blur(8px);
+    padding: 12px;
+    color: #fff;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.45);
+}
+
+.panel-widget {
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.widget-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #38bdf8;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    letter-spacing: 0.08em;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    margin-bottom: 6px;
+    color: #cbd5e1;
+}
+
+.color-box {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+#drone-list-left {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.bat-bar-bg {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 4px;
+}
+
+.bat-bar-fill {
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+.base-station-darkred {
+    background-color: #8b0000 !important;
+    color: #ffffff !important;
+    border: 2px solid #ff4d4d !important;
+    box-shadow: 0 0 12px rgba(139, 0, 0, 0.9) !important;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.person-pin-icon {
+    font-size: 18px;
+    text-align: center;
+    line-height: 26px;
+    background: #dc2626;
+    border: 2px solid #ffffff;
+    color: white;
+    border-radius: 50%;
+    width: 26px !important;
+    height: 26px !important;
+    box-shadow: 0 0 10px rgba(220, 38, 38, 0.8);
+}
+
+.obstacle-icon {
+    font-size: 18px;
+    text-align: center;
+    line-height: 26px;
+    background: #000;
+    border: 2px solid #ff4d4d;
+    color: #ff4d4d;
+    border-radius: 50%;
+    width: 26px !important;
+    height: 26px !important;
+    box-shadow: 0 0 12px rgba(255, 77, 77, 0.9);
+}
+
+.custom-quadcopter-icon {
+    background: transparent;
+    border: 0;
+}
+
+@keyframes radarPulse {
+    0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0.9; }
+    100% { transform: translate(-50%, -50%) scale(2.0); opacity: 0; }
+}
+
+.radar-pulse-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    border: 2px solid #00e5ff;
+    border-radius: 50%;
+    background: rgba(0, 229, 255, 0.15);
+    pointer-events: none;
+    animation: radarPulse 2s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+.leaflet-control-attribution {
+    background: rgba(15, 23, 42, 0.8) !important;
+    color: #cbd5e1 !important;
+}
+
+.leaflet-control-attribution a {
+    color: #38bdf8 !important;
+}
