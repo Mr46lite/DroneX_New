@@ -22,11 +22,11 @@ class Simulation:
         self.complete = False
         self.coord = Coordinator()
         self.drones = [Drone(i, t, *BASE_POS) for i, t in
-                       [("S1", "scanner"), ("S2", "scanner"), ("U1", "supplier"), ("U2", "supplier")]]
+                       [("S1", "scanner"), ("S2", "scanner")] + [(f"U{i}", "supplier") for i in range(1, 8)]]
         order = boustrophedon_path(self.zones)
         half = (len(order) + 1) // 2
         self.queues = {"S1": order[:half], "S2": order[half:]}
-        self.say("Mission started: 2 scanners and 2 suppliers at base")
+        self.say("Mission started: 2 scanners and 7 suppliers at base")
 
     # ---------- helpers ----------
     def drone(self, did):
