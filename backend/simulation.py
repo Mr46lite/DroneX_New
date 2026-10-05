@@ -3,7 +3,7 @@ from agents import Coordinator, Drone
 from planning import BASE_POS, a_star_route, boustrophedon_path, get_distance, route_is_clear
 from scenario import Scenario
 
-SCAN_DWELL = 3      # ticks a scanner hovers over a zone
+SCAN_DWELL = 2      # ticks a scanner hovers over a zone
 DELIVER_DWELL = 2   # ticks a supplier spends dropping aid
 
 
@@ -21,12 +21,17 @@ class Simulation:
         self.log = []
         self.complete = False
         self.coord = Coordinator()
-        self.drones = [Drone(i, t, *BASE_POS) for i, t in
-                       [("S1", "scanner"), ("S2", "scanner")] + [(f"U{i}", "supplier") for i in range(1, 8)]]
-        order = boustrophedon_path(self.zones)
-        half = (len(order) + 1) // 2
-        self.queues = {"S1": order[:half], "S2": order[half:]}
-        self.say("Mission started: 2 scanners and 7 suppliers at base")
+        # Lawnmower: 7 scanners, each owns a 2-column strip and sweeps it row by row, alternating direction
+        cols = sorted({z["lng"] for z in self.zones}); rows = sorted({z["lat"] for z in self.zones})
+        by = {(z["lat"], z["lng"]): z["id"] for z in self.zones}
+        per = len(cols) // 7
+        self.queues, self.drones = {}, []
+        for i in range(7):
+            sc = cols[i * per:(i + 1) * per]
+            self.queues[f"S{i+1}"] = [by[(lat, lng)] for r, lat in enumerate(rows) for lng in (sc if r % 2 == 0 else sc[::-1])]
+            self.drones.append(Drone(f"S{i+1}", "scanner", BASE_POS[0], sc[0]))
+        self.drones += [Drone("U1", "supplier", *BASE_POS), Drone("U2", "supplier", *BASE_POS)]
+        self.say("Mission started: 7 scanners (lawnmower strips) and 2 suppliers")
 
     # ---------- helpers ----------
     def drone(self, did):
@@ -99,8 +104,9 @@ class Simulation:
         remaining = [z for z in ([d.target] if d.target else []) + self.queues[d.id]
                      if self.zmap[z]["status"] == "unscanned"]
         self.queues[d.id] = []
-        other = next((s for s in self.drones if s.type == "scanner" and s is not d
-                      and s.status != "grounded"), None)
+        others = [s for s in self.drones if s.type == "scanner" and s is not d
+                  and s.status not in ("grounded", "returning")]
+        other = min(others, key=lambda s: get_distance((s.lat, s.lng), (d.lat, d.lng)), default=None)
         if other and remaining:
             self.queues[other.id] += remaining
             if other.status == "done":
@@ -148,8 +154,7 @@ class Simulation:
             if not q:
                 d.target, d.waypoints, d.status = None, [], "done"
                 return False
-            zid = min(q, key=lambda z: get_distance((d.lat, d.lng), self._pos(z)))
-            q.remove(zid)
+            zid = q.pop(0)          # strict lawnmower order
             route = a_star_route((d.lat, d.lng), zid, blocked, self.zones)
             if route:
                 d.target, d.waypoints, d.dwell, d.status = zid, route, 0, "scanning"
