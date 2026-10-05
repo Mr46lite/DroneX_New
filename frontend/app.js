@@ -1,7 +1,7 @@
 const COLORS = {unscanned:"#64748b", scanned:"#22c55e", blocked:"#ef4444", survivor_found:"#f59e0b"};
 const $ = id => document.getElementById(id);
 const map = L.map("map").setView([12.9725, 77.5925], 15);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {maxZoom: 19, attribution: "&copy; OSM &copy; CARTO"}).addTo(map);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom: 19, attribution: "&copy; OpenStreetMap contributors"}).addTo(map);
 const zoneL = {}, droneL = {}, routeL = {};
 let ws, lastPending = "", zoneIds = [];
 
