@@ -107,10 +107,9 @@ pytest
 
 Want to fix more bugs and refine the prototype
 
-## Team
+## Team - DroneX
 
 - N KRISHNA TEJ [TEAM LEADER]
 - G THEERTHA REDDY [TEAM MEMBER]
 
 
-- TEAM DroneX
